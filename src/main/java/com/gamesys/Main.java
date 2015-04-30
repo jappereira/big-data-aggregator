@@ -6,7 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
-import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -17,6 +17,7 @@ public class Main {
     private static String PARTNER;
     private static String CURRENCY;
     private static Map<String, BigDecimal> EXCHANGE_RATES;
+    private static Map<String, BigDecimal> TOTAL_TRANSACTIONS_AMOUNTS = new ConcurrentHashMap<>();
 
     public static void main(String[] args) throws IOException {
         EXCHANGE_RATES_FILENAME = args[0];
@@ -26,7 +27,11 @@ public class Main {
 
         EXCHANGE_RATES = loadExchangeRates();
 
-        System.out.println(calculateTotalTransactionsAmountForPartner().get());
+        calculateTotalTransactionsAmounts();
+
+        // write TOTAL_TRANSACTIONS_AMOUNTS to file
+
+        System.out.println(TOTAL_TRANSACTIONS_AMOUNTS.get(PARTNER));
     }
 
     private static Map<String, BigDecimal> loadExchangeRates() throws IOException {
@@ -39,29 +44,33 @@ public class Main {
             EXCHANGE_RATES
                     = filteredLines
                     .collect(Collectors.toMap(exchangeRate -> exchangeRate.substring(0, 3),
-                            exchangeRate -> new BigDecimal(exchangeRate.substring(8))));
+                                              exchangeRate -> new BigDecimal(exchangeRate.substring(8))));
         }
 
         return EXCHANGE_RATES;
     }
 
-    // Task 2
-    private static Optional<BigDecimal> calculateTotalTransactionsAmountForPartner() throws
-            IOException {
+    private static void calculateTotalTransactionsAmounts() throws IOException {
         Path path = Paths.get(TRANSACTIONS_FILENAME);
-        Optional<BigDecimal> result;
 
-        try (Stream<String> filteredLines = Files.lines(path).filter(l -> l.startsWith(PARTNER))) {
-            result = filteredLines.map((String transaction) -> {
+        try (Stream<String> transactions = Files.lines(path).parallel()) {
+            transactions.forEach(transaction -> {
                 String[] strings = transaction.split(",");
                 if (strings[1].equals(CURRENCY)) {
-                    return new BigDecimal(strings[2]);
+                    TOTAL_TRANSACTIONS_AMOUNTS.compute(strings[0], (k, currentAmount) -> currentAmount == null ?
+                                                                                         new BigDecimal(strings[2])
+                                                                                                               : currentAmount.add(new BigDecimal(strings[2])));
                 } else {
-                    return new BigDecimal(strings[2]).multiply(EXCHANGE_RATES.get(strings[1]));
+                    TOTAL_TRANSACTIONS_AMOUNTS
+                            .compute(strings[0], (k, currentAmount) -> currentAmount == null ?
+                                                                       new BigDecimal(strings[2]).multiply(EXCHANGE_RATES.get(strings[1]))
+                                                                                             : currentAmount.add(new BigDecimal(strings[2])
+                                                                                                                         .multiply(
+                                                                                                                                 EXCHANGE_RATES
+                                                                                                                                         .get(strings[1]))));
                 }
-            }).reduce((a, b) -> a.add(b));
+            });
         }
-
-        return result;
     }
+
 }
