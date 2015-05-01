@@ -1,6 +1,6 @@
-package com.gamesys;
-
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,7 +29,7 @@ public class Main {
 
         calculateTotalTransactionsAmounts();
 
-        // write TOTAL_TRANSACTIONS_AMOUNTS to file
+        writeTotalTransactionsAmounts();
 
         System.out.println(TOTAL_TRANSACTIONS_AMOUNTS.get(PARTNER));
     }
@@ -44,7 +44,7 @@ public class Main {
             EXCHANGE_RATES
                     = filteredLines
                     .collect(Collectors.toMap(exchangeRate -> exchangeRate.substring(0, 3),
-                                              exchangeRate -> new BigDecimal(exchangeRate.substring(8))));
+                            exchangeRate -> new BigDecimal(exchangeRate.substring(8))));
         }
 
         return EXCHANGE_RATES;
@@ -57,20 +57,28 @@ public class Main {
             transactions.forEach(transaction -> {
                 String[] strings = transaction.split(",");
                 if (strings[1].equals(CURRENCY)) {
-                    TOTAL_TRANSACTIONS_AMOUNTS.compute(strings[0], (k, currentAmount) -> currentAmount == null ?
-                                                                                         new BigDecimal(strings[2])
-                                                                                                               : currentAmount.add(new BigDecimal(strings[2])));
+                    TOTAL_TRANSACTIONS_AMOUNTS.compute(strings[0], (k, currentAmount) ->
+                            currentAmount == null ?
+                                    new BigDecimal(strings[2])
+                                    : currentAmount.add(new BigDecimal(strings[2])));
                 } else {
                     TOTAL_TRANSACTIONS_AMOUNTS
                             .compute(strings[0], (k, currentAmount) -> currentAmount == null ?
-                                                                       new BigDecimal(strings[2]).multiply(EXCHANGE_RATES.get(strings[1]))
-                                                                                             : currentAmount.add(new BigDecimal(strings[2])
-                                                                                                                         .multiply(
-                                                                                                                                 EXCHANGE_RATES
-                                                                                                                                         .get(strings[1]))));
+                                    new BigDecimal(strings[2]).multiply(EXCHANGE_RATES.get
+                                            (strings[1]))
+                                    : currentAmount.add(new BigDecimal(strings[2])
+                                    .multiply(
+                                            EXCHANGE_RATES
+                                                    .get(strings[1]))));
                 }
             });
         }
+    }
+
+    private static void writeTotalTransactionsAmounts() throws IOException {
+        PrintWriter pw = new PrintWriter(new FileWriter("aggregated_transactions_by_partner.csv"));
+        TOTAL_TRANSACTIONS_AMOUNTS.forEach((partner, amount) -> pw.println(partner + "," + amount));
+        pw.close();
     }
 
 }
